@@ -242,7 +242,7 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("OCR 翻译校对工具")
+                Text("NGM proofread")
                     .font(.body)
                 Text("版本 1.0.0")
                     .font(.caption)

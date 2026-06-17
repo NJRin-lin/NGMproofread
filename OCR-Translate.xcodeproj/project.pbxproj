@@ -69,6 +69,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		G00000000000000000000008 /* Assets */ = {isa = PBXGroup; children = (); path = "Assets.xcassets"; sourceTree = "<group>"; };
 		G00000000000000000000001 /* OCR-Translate */ = {
 			isa = PBXGroup;
 			children = (
