@@ -213,7 +213,7 @@ struct CroppableImageView: View {
                 }
             } else {
                 DispatchQueue.main.async {
-                    self.applyZoom(self.scale + event.scrollingDeltaY * 0.001)
+                    self.applyZoom(self.scale + event.scrollingDeltaY * 0.008)
                 }
             }
             return event
