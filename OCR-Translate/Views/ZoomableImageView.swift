@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ZoomableImageView: View {
     let image: NSImage
+    var onUploadNew: () -> Void = {}
 
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
@@ -36,6 +37,12 @@ struct ZoomableImageView: View {
 
             // Zoom toolbar
             HStack(spacing: 6) {
+                Button(action: onUploadNew) {
+                    Label("换图", systemImage: "photo.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
                 Spacer()
                 if scale != 1.0 {
                     Button("1:1") { applyZoom(1.0) }

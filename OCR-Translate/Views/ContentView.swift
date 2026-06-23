@@ -243,7 +243,7 @@ struct ContentView: View {
                 // Text mode content
                 VStack {
                     if let ref = referenceImage {
-                        ZoomableImageView(image: ref)
+                        ZoomableImageView(image: ref, onUploadNew: uploadReferenceImage)
                     } else {
                         VStack(spacing: 20) {
                             Image(systemName: "doc.text.image")
@@ -422,9 +422,10 @@ struct ContentView: View {
 
     private func uploadImage() {
         Task {
-            if let image = await imageLoader.loadFromFile() {
-                selectedImage = image
-                resetResults()
+            if inputMode == .text {
+                if let img = await imageLoader.loadFromFile() { referenceImage = img }
+            } else {
+                if let image = await imageLoader.loadFromFile() { selectedImage = image; resetResults() }
             }
         }
     }
