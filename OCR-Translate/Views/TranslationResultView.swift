@@ -17,6 +17,9 @@ struct TranslationResultView: View {
             HStack {
                 Text("翻译结果")
                     .font(.headline)
+                Text(result.providerName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 HStack(spacing: 4) {
                     Text(langLabel(result.sourceLanguage))

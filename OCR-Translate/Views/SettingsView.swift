@@ -34,7 +34,11 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     providerSection
                     Divider()
-                    apiKeySection
+                    if selectedProvider == .chatgpt {
+                        ChatGPTSettingsView()
+                    } else {
+                        apiKeySection
+                    }
                     Divider()
                     analysisModeSection
                     Divider()

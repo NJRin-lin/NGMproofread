@@ -95,6 +95,10 @@ final class AIService {
     ) async throws -> String {
         let provider = store.activeProvider
 
+        if provider == .chatgpt {
+            return try await ChatGPTClient.shared.chat(instructions: systemPrompt, text: userMessage)
+        }
+
         guard let apiKey = store.read(for: provider), !apiKey.isEmpty else {
             throw AIServiceError.noAPIKey
         }
@@ -117,6 +121,8 @@ final class AIService {
                 temperature: temperature,
                 maxTokens: maxTokens
             )
+        case .chatgpt:
+            throw AIServiceError.noAPIKey // Handled above; never send a plan token to Chat Completions.
         }
     }
 

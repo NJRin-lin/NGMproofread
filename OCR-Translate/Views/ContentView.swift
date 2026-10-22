@@ -12,7 +12,10 @@ struct ContentView: View {
     @State private var isProcessingOCR = false
     @State private var isProcessingAI = false
     @State private var errorMessage: String?
+    @State private var aiErrorMessage: String?
     @State private var showingSettings = false
+    @StateObject private var chatGPT = ChatGPTClient.shared
+    @AppStorage("active_provider") private var activeProviderRaw = AIProvider.deepseek.rawValue
     @State private var pendingImage: NSImage?
     @State private var lookupWord: String = ""
     @State private var inputMode: InputMode = .image
@@ -49,7 +52,14 @@ struct ContentView: View {
     private let apiKeyStore = APIKeyStore()
     @StateObject private var glossary = GlossaryStore()
 
-    private var hasAPIKey: Bool { apiKeyStore.hasActiveKey() }
+    private var hasAPIKey: Bool {
+        activeProviderRaw == AIProvider.chatgpt.rawValue ? chatGPT.isReady : apiKeyStore.hasActiveKey()
+    }
+
+    private var aiConfiguration: String {
+        guard activeProviderRaw == AIProvider.chatgpt.rawValue else { return activeProviderRaw }
+        return [activeProviderRaw, chatGPT.activeID, chatGPT.activeAccount?.selectedModel ?? ""].joined(separator: ":")
+    }
 
     private var currentText: String {
         let text = inputMode == .text ? manualText : (ocrResult?.fullText ?? "")
@@ -71,6 +81,18 @@ struct ContentView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 analysisModePicker
+                if currentTranslation != nil {
+                    Button {
+                        Task {
+                            if inputMode == .image { await performTranslationAndAnalysis() }
+                            else { await performTextTranslation() }
+                        }
+                    } label: {
+                        Label("重新翻译分析", systemImage: "arrow.clockwise")
+                    }
+                    .help("使用设置中当前选择的 AI 服务重新翻译分析")
+                    .disabled(isProcessingAI || currentText.isEmpty)
+                }
                 Button(action: takeScreenshot) {
                     Label("截图", systemImage: "camera.viewfinder")
                 }
@@ -84,10 +106,32 @@ struct ContentView: View {
                 Button(action: { showingSettings = true }) {
                     Label("设置", systemImage: "gearshape")
                 }
+                .disabled(isProcessingAI)
             }
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(analysisMode: $analysisMode)
+        }
+        .alert("翻译分析未完成", isPresented: Binding(
+            get: { aiErrorMessage != nil },
+            set: { if !$0 { aiErrorMessage = nil } }
+        )) {
+            Button("打开设置") { aiErrorMessage = nil; showingSettings = true }
+            Button("好", role: .cancel) { aiErrorMessage = nil }
+        } message: {
+            Text(aiErrorMessage ?? "")
+        }
+        .onChange(of: activeProviderRaw) { _, _ in
+            // Analysis caches must not leak across provider choices.
+            imageTranslation = nil; imageAnalysis = nil; imageCache = [:]
+            textTranslation = nil; textAnalysis = nil; textCache = [:]
+            errorMessage = nil
+        }
+        .onChange(of: chatGPT.activeAccount?.selectedModel) { _, _ in
+            imageCache = [:]; textCache = [:]
+        }
+        .onChange(of: chatGPT.activeID) { _, _ in
+            imageCache = [:]; textCache = [:]
         }
         .onChange(of: analysisMode) { _, _ in
             guard !currentText.isEmpty else { return }
@@ -103,8 +147,11 @@ struct ContentView: View {
                     } else {
                         await performTranslationAndAnalysis()
                     }
-                } else if let result = try? await analysisService.analyze(text: currentText, mode: analysisMode) {
-                    applyAnalysis(result)
+                } else {
+                    do {
+                        let result = try await analysisService.analyze(text: currentText, mode: analysisMode)
+                        applyAnalysis(result)
+                    } catch { aiErrorMessage = error.localizedDescription }
                 }
                 isProcessingAI = false
             }
@@ -337,12 +384,14 @@ struct ContentView: View {
                         Text("共识别 \(ocr.blocks.count) 段文字，平均置信度 \(Int(ocr.averageConfidence * 100))%")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("配置 DeepSeek API Key 后可翻译分析")
+                        Text(activeProviderRaw == AIProvider.chatgpt.rawValue
+                             ? "在设置中连接 ChatGPT 并选择模型后可翻译分析"
+                             : "在设置中配置所选服务的 API Key 后可翻译分析")
                             .font(.callout)
                             .foregroundStyle(.secondary)
 
                         Button(action: { showingSettings = true }) {
-                            Label("配置 API Key", systemImage: "key")
+                            Label("配置 AI 服务", systemImage: "key")
                                 .frame(width: 180)
                         }
                         .buttonStyle(.bordered)
@@ -402,6 +451,7 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 150)
+            .disabled(isProcessingAI)
             .contextMenu { EmptyView() }
         }
     }
@@ -485,17 +535,21 @@ struct ContentView: View {
         guard !text.isEmpty else { return }
 
         isProcessingAI = true
+        let configuration = aiConfiguration
+        let requestedMode = analysisMode
 
         do {
             async let translation = translationService.translate(text: text, glossary: glossary.buildPromptSnippet())
-            async let analysis = analysisService.analyze(text: currentText, mode: analysisMode)
+            async let analysis = analysisService.analyze(text: currentText, mode: requestedMode)
 
             let (trans, anal) = try await (translation, analysis)
-            textTranslation = trans
-            textAnalysis = anal
-            textCache[analysisMode] = anal
+            if configuration == aiConfiguration {
+                textTranslation = trans
+                textAnalysis = anal
+                textCache[requestedMode] = anal
+            }
         } catch {
-            errorMessage = error.localizedDescription
+            aiErrorMessage = error.localizedDescription
         }
 
         isProcessingAI = false
@@ -507,17 +561,21 @@ struct ContentView: View {
         guard let ocr = ocrResult, !ocr.fullText.isEmpty else { return }
 
         isProcessingAI = true
+        let configuration = aiConfiguration
+        let requestedMode = analysisMode
 
         do {
             async let translation = translationService.translate(text: ocr.fullText, glossary: glossary.buildPromptSnippet())
-            async let analysis = analysisService.analyze(text: currentText, mode: analysisMode)
+            async let analysis = analysisService.analyze(text: currentText, mode: requestedMode)
 
             let (trans, anal) = try await (translation, analysis)
-            imageTranslation = trans
-            imageAnalysis = anal
-            imageCache[analysisMode] = anal
+            if configuration == aiConfiguration {
+                imageTranslation = trans
+                imageAnalysis = anal
+                imageCache[requestedMode] = anal
+            }
         } catch {
-            errorMessage = error.localizedDescription
+            aiErrorMessage = error.localizedDescription
         }
 
         isProcessingAI = false

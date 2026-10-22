@@ -53,7 +53,14 @@ final class VocabularyService {
         let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw VocabError.emptyWord }
 
-        let key = trimmed.lowercased()
+        let provider = deepSeek.activeProvider
+        let connection: String
+        if provider == .chatgpt {
+            connection = await ChatGPTClient.shared.cacheIdentity
+        } else {
+            connection = provider.rawValue
+        }
+        let key = connection + ":" + trimmed.lowercased()
         if let cached = cache[key] { return cached }
 
         let raw: String

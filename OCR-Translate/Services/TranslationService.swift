@@ -35,6 +35,7 @@ final class TranslationService {
         }
 
         let prompt = systemPrompt + glossary
+        let providerName = deepSeek.activeProvider.shortName
 
         do {
             let translated = try await deepSeek.chat(
@@ -43,7 +44,8 @@ final class TranslationService {
             )
             return TranslationResult(
                 originalText: trimmed,
-                translatedText: translated.trimmingCharacters(in: .whitespacesAndNewlines)
+                translatedText: translated.trimmingCharacters(in: .whitespacesAndNewlines),
+                providerName: providerName
             )
         } catch {
             throw TranslationError.apiError(error.localizedDescription)
